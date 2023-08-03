@@ -219,31 +219,33 @@ class PuckTracker:
 
 def puck_tracker_exp():
     from air_hockey_challenge.framework.air_hockey_challenge_wrapper import AirHockeyChallengeWrapper
+    from air_hockey_challenge.environments.planar.hit import AirHockeyHit
     import matplotlib
-    matplotlib.use('tkagg')
+    #matplotlib.use('tkagg')
     import matplotlib.pyplot as plt
     from matplotlib.gridspec import GridSpec
 
     def set_puck_state(env, state, P, predict_time):
-        env.base_env._data.qvel[-3:] = np.zeros(3)
-        env.base_env._data.joint("puck_record_x").qpos = state[0] - 1.51
-        env.base_env._data.joint("puck_record_y").qpos = state[1]
-        env.base_env._data.joint("puck_record_yaw").qpos = state[4]
-        env.base_env._data.joint("puck_record_x").qvel = 0.
-        env.base_env._data.joint("puck_record_y").qvel = 0.
-        env.base_env._data.joint("puck_record_yaw").qvel = 0.
+        env._data.qvel[-3:] = np.zeros(3)
+        env._data.joint("puck_record_x").qpos = state[0] - 1.51
+        env._data.joint("puck_record_y").qpos = state[1]
+        env._data.joint("puck_record_yaw").qpos = state[4]
+        env._data.joint("puck_record_x").qvel = 0.
+        env._data.joint("puck_record_y").qvel = 0.
+        env._data.joint("puck_record_yaw").qvel = 0.
 
         eig_v, eig_vector = np.linalg.eig(P[:2, :2])
         if np.linalg.det(P[[0, 1]][:, [0, 1]]) > 1e-4:
-            env.base_env._model.geom('puck_record').size[:2] = eig_v / np.max(eig_v) * 10 * 0.03165
-            env.base_env._model.geom('puck_record').rgba = np.array([0., 0.2, 1., 0.6])
-            env.base_env._model.geom('puck_record_ori').rgba = np.array([1., 0., 0., 1.])
+            env._model.geom('puck_record').size[:2] = eig_v / np.max(eig_v) * 10 * 0.03165
+            env._model.geom('puck_record').rgba = np.array([0., 0.2, 1., 0.6])
+            env._model.geom('puck_record_ori').rgba = np.array([1., 0., 0., 1.])
         else:
-            env.base_env._model.geom('puck_record').size[:2] = eig_v / 5e-4 * 0.03165
-        env.base_env._data.joint('puck_record_yaw_vis').qpos = np.arctan2(eig_vector[1, 0], eig_vector[0, 0])
+            env._model.geom('puck_record').size[:2] = eig_v / 5e-4 * 0.03165
+        env._data.joint('puck_record_yaw_vis').qpos = np.arctan2(eig_vector[1, 0], eig_vector[0, 0])
 
-    env = AirHockeyChallengeWrapper(env="3dof-hit", action_type="position-velocity", random_init=True,
-                                    interpolation_order=3)
+    env = AirHockeyChallengeWrapper(env="3dof-hit", interpolation_order=1)#, action_type="position-velocity", random_init=True,
+                                    #interpolation_order=3)a
+    env = AirHockeyHit()
 
     kalman_filter = PuckTracker(env.env_info, agent_id=1)
     predict_time = 0.5
@@ -257,20 +259,20 @@ def puck_tracker_exp():
         traj = []
 
         env.reset()
-        env.base_env._data.joint("puck_x").qpos = state[0] - 1.51
-        env.base_env._data.joint("puck_y").qpos = state[1]
-        env.base_env._data.joint("puck_yaw").qpos = state[4]
-        env.base_env._data.joint("puck_x").qvel = state[2]
-        env.base_env._data.joint("puck_y").qvel = state[3]
-        env.base_env._data.joint("puck_yaw").qvel = state[5]
-        env.base_env._data.joint("planar_robot_1/joint_1").qpos = np.pi / 2
-        env.base_env._data.joint("planar_robot_1/joint_2").qpos = 0
-        env.base_env._data.joint("planar_robot_1/joint_3").qpos = 0
+        env._data.joint("puck_x").qpos = state[0] - 1.51
+        env._data.joint("puck_y").qpos = state[1]
+        env._data.joint("puck_yaw").qpos = state[4]
+        env._data.joint("puck_x").qvel = state[2]
+        env._data.joint("puck_y").qvel = state[3]
+        env._data.joint("puck_yaw").qvel = state[5]
+        env._data.joint("planar_robot_1/joint_1").qpos = np.pi / 2
+        env._data.joint("planar_robot_1/joint_2").qpos = 0
+        env._data.joint("planar_robot_1/joint_3").qpos = 0
 
         kalman_filter.reset(state[[0, 1, 4]])
 
         for i in range(200):
-            obs, _, _, _ = env.step(np.vstack([np.array([np.pi / 2, 0., 0.]), np.zeros(3)]))
+            obs, _, _, _ = env.step(np.array([0, 0., 0.]))
             kalman_filter.step(obs[:3])
             state, P, _ = kalman_filter.get_prediction(predict_time)
 
