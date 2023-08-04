@@ -3,7 +3,6 @@ import numpy as np
 
 from air_hockey_challenge.environments.planar import AirHockeyBase
 
-
 class AirHockeySingle(AirHockeyBase):
     """
     Base class for single agent air hockey tasks.

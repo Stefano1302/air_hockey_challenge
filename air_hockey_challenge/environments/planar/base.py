@@ -15,7 +15,7 @@ class AirHockeyBase(MuJoCo):
 
     """
 
-    def __init__(self, gamma=0.99, horizon=500, timestep=1 / 1000., n_intermediate_steps=20, n_substeps=1,
+    def __init__(self, gamma=0.99, horizon=500, timestep=1/1000., n_intermediate_steps=20, n_substeps=1,
                  n_agents=1, viewer_params={}):
         """
         Constructor.

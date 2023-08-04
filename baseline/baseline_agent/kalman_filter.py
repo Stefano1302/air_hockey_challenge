@@ -218,14 +218,14 @@ class PuckTracker:
 
 
 def puck_tracker_exp():
-    from air_hockey_challenge.framework.air_hockey_challenge_wrapper import AirHockeyChallengeWrapper
+    #from air_hockey_challenge.framework.air_hockey_challenge_wrapper import AirHockeyChallengeWrapper
     from air_hockey_challenge.environments.planar.hit import AirHockeyHit
-    import matplotlib
+    #import matplotlib
     #matplotlib.use('tkagg')
     import matplotlib.pyplot as plt
     from matplotlib.gridspec import GridSpec
 
-    def set_puck_state(env, state, P, predict_time):
+    def set_puck_state(env, state, P, predict_time): 
         env._data.qvel[-3:] = np.zeros(3)
         env._data.joint("puck_record_x").qpos = state[0] - 1.51
         env._data.joint("puck_record_y").qpos = state[1]
@@ -243,14 +243,14 @@ def puck_tracker_exp():
             env._model.geom('puck_record').size[:2] = eig_v / 5e-4 * 0.03165
         env._data.joint('puck_record_yaw_vis').qpos = np.arctan2(eig_vector[1, 0], eig_vector[0, 0])
 
-    env = AirHockeyChallengeWrapper(env="3dof-hit", interpolation_order=1)#, action_type="position-velocity", random_init=True,
+    #env = AirHockeyChallengeWrapper(env="3dof-hit", interpolation_order=1)#, action_type="position-velocity", random_init=True,
                                     #interpolation_order=3)a
     env = AirHockeyHit()
 
     kalman_filter = PuckTracker(env.env_info, agent_id=1)
     predict_time = 0.5
 
-    for epoch in range(10):
+    for epoch in range(1):
         # init_pos = np.random.uniform(kalman_filter.system.table.boundary[0, 1], kalman_filter.system.table.boundary[2, 1])
         # init_vel = np.random.randn(3)
         init_pos = np.array([1.51, -0.3])
@@ -280,6 +280,8 @@ def puck_tracker_exp():
             env.render()
             traj.append(np.concatenate([state.copy(), obs[:6]]))
         traj = np.array(traj)
+        
+        env.stop()
 
         fig = plt.figure(constrained_layout=True)
         gs = GridSpec(3, 4, figure=fig)
@@ -323,5 +325,5 @@ def puck_tracker_exp():
         plt.show()
 
 
-if __name__ == '__main__':
-    puck_tracker_exp()
+if __name__ == '__main__':  #if the script is run directly
+    puck_tracker_exp()      #puck_tracker_exp() call
