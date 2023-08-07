@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Aug  5 12:45:22 2023
+
+@author: stefano
+"""
+
 import numpy as np
 
 b_params = np.array([8.40683102e-01, 0, 7.71445220e-04])
@@ -6,12 +14,22 @@ theta_params = np.array([-6.48073315, 6.32545305, 0.8386719])
 damping = np.array([0.2125, 0.2562])
 LIN_COV = np.diag([8.90797655e-07, 5.49874493e-07, 2.54163138e-04, 3.80228296e-04, 7.19007035e-02, 1.58019149e+00])
 COL_COV = \
-    np.array([[0., 0., 0., 0., 0., 0.],
-              [0., 0., 0., 0., 0., 0.],
-              [0., 0., 2.09562546e-01, 3.46276805e-02, 0., -1.03489604e+00],
-              [0., 0., 3.46276805e-02, 9.41218351e-02, 0., -1.67029496e+00],
-              [0., 0., 0., 0., 0., 0.],
-              [0., 0., -1.03489604e+00, -1.67029496e+00, 0., 1.78037877e+02]])
+    np.array([[0., 0.,              0.,              0., 0.,              0.],
+              [0., 0.,              0.,              0., 0.,              0.],
+              [0., 0.,  2.09562546e-01,  3.46276805e-02, 0., -1.03489604e+00],
+              [0., 0.,  3.46276805e-02,  9.41218351e-02, 0., -1.67029496e+00],
+              [0., 0.,              0.,              0., 0.,              0.],
+              [0., 0., -1.03489604e+00, -1.67029496e+00, 0.,  1.78037877e+02]])
+sigma_1 = 1.27081569e-2
+sigma_2 = 1.90114148e-2
+sigma_3 = 79.0095745
+# LIN_COV = \
+#     np.array([[(sigma_1*0.02**3)/3,                  0., (sigma_1*0.02**2)/2,                  0.,                  0.,                   0.],
+#               [                 0., (sigma_2*0.02**3)/3,                  0., (sigma_2*0.02**2)/2,                  0.,                   0.],
+#               [(sigma_1*0.02**2)/2,                  0.,      2.09562546e-01,                   0,                  0.,                   0.],
+#               [                 0., (sigma_2*0.02**2)/2,                  0.,      9.41218351e-02,                  0.,                   0.],
+#               [                 0.,                  0.,                  0.,                  0., (sigma_3*0.02**3)/3,  (sigma_3*0.02**2)/2],
+#               [                 0.,                  0.,                  0.,                  0., (sigma_3*0.02**2)/2,       1.78037877e+02]])
 
 OBS_COV = np.diag([5.0650402e-07, 8.3995428e-07, 1.6572967e-03])
 
@@ -174,6 +192,7 @@ class PuckTracker:
         self.state = None
         self.P = None
         self.gate = chi2.ppf(0.9, df = 3)
+        self.gamma = 1
 
     def reset(self, puck_pos):
         self.P = np.eye(6)
@@ -183,9 +202,9 @@ class PuckTracker:
     def predict(self, state, P):
         predicted_state = self.system.f(state)
         if self.system.has_collision:
-            Q = self.system.Q_collision
+            Q = self.Q
         elif self.system.outside_boundary or self.system.score:
-            Q = self.system.Q_collision
+            Q = self.Q
         else:
             Q = self.Q
         P = self.system.F @ P @ self.system.F.T + Q
@@ -200,17 +219,21 @@ class PuckTracker:
         #numerator = np.trace(self.H @ P @ self.H.T)
         #denominator = np.trace(y @ y.T - self.R)
         if self.system.has_collision:#y.T @ np.linalg.inv(S_theory) @ y > self.gate: 
-            gamma = 0.2#1#numerator/denominator
+            self.gamma = 0.2#1#numerator/denominator
         #if numerator < denominator: 
         #    gamma = 1#numerator/denominator
         else:
-            gamma = 1
-        #gamma = 0.4
+            if self.gamma < 1: 
+                self.gamma *= 1.5
+                if self.gamma > 1:
+                    self.gamma = 1
+                
+        #self.gamma = 1
         
-        S = self.H @ P @ self.H.T / gamma + self.R
-        K = P @ self.H.T @ np.linalg.inv(S) / gamma
+        S = self.H @ P @ self.H.T / self.gamma + self.R
+        K = P @ self.H.T @ np.linalg.inv(S) / self.gamma
         state = predicted_state + K @ y
-        P = (np.eye(6) - K @ self.H) @ P / gamma
+        P = (np.eye(6) - K @ self.H) @ P / self.gamma
         return state, P
 
     def step(self, measurement):
@@ -238,10 +261,7 @@ class PuckTracker:
 
 
 def puck_tracker_exp():
-    #from air_hockey_challenge.framework.air_hockey_challenge_wrapper import AirHockeyChallengeWrapper
     from air_hockey_challenge.environments.planar.hit import AirHockeyHit
-    #import matplotlib
-    #matplotlib.use('tkagg')
     import matplotlib.pyplot as plt
     from matplotlib.gridspec import GridSpec
 
@@ -263,8 +283,6 @@ def puck_tracker_exp():
             env._model.geom('puck_record').size[:2] = eig_v / 5e-4 * 0.03165
         env._data.joint('puck_record_yaw_vis').qpos = np.arctan2(eig_vector[1, 0], eig_vector[0, 0])
 
-    #env = AirHockeyChallengeWrapper(env="3dof-hit", interpolation_order=1)#, action_type="position-velocity", random_init=True,
-                                    #interpolation_order=3)a
     env = AirHockeyHit()
 
     kalman_filter = PuckTracker(env.env_info, agent_id=1)
@@ -274,7 +292,7 @@ def puck_tracker_exp():
         # init_pos = np.random.uniform(kalman_filter.system.table.boundary[0, 1], kalman_filter.system.table.boundary[2, 1])
         # init_vel = np.random.randn(3)
         init_pos = np.array([1.51, -0.3])
-        init_vel = np.array([1.5, 1.5, 0.])
+        init_vel = np.array([-2, 1.7, 0.])
         state = np.concatenate([init_pos, init_vel[:2], [0.5], init_vel[2:]])
         traj = []
 
