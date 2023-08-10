@@ -1,17 +1,35 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Aug  5 12:45:22 2023
+
+@author: stefano
+"""
+
 import numpy as np
 
 b_params = np.array([8.40683102e-01, 0, 7.71445220e-04])
 n_params = np.array([0., -0.79, 0.])
 theta_params = np.array([-6.48073315, 6.32545305, 0.8386719])
 damping = np.array([0.2125, 0.2562])
-LIN_COV = np.diag([8.90797655e-07, 5.49874493e-07, 2.54163138e-04, 3.80228296e-04, 7.19007035e-02, 1.58019149e+00])
+#LIN_COV = np.diag([8.90797655e-07, 5.49874493e-07, 2.54163138e-04, 3.80228296e-04, 7.19007035e-02, 1.58019149e+00])
 COL_COV = \
-    np.array([[0., 0., 0., 0., 0., 0.],
-              [0., 0., 0., 0., 0., 0.],
-              [0., 0., 2.09562546e-01, 3.46276805e-02, 0., -1.03489604e+00],
-              [0., 0., 3.46276805e-02, 9.41218351e-02, 0., -1.67029496e+00],
-              [0., 0., 0., 0., 0., 0.],
-              [0., 0., -1.03489604e+00, -1.67029496e+00, 0., 1.78037877e+02]])
+    0.01*np.array([[0., 0.,              0.,              0., 0.,              0.],
+                [0., 0.,              0.,              0., 0.,              0.],
+                [0., 0.,  2.09562546e-01,  3.46276805e-02, 0., -1.03489604e+00],
+                [0., 0.,  3.46276805e-02,  9.41218351e-02, 0., -1.67029496e+00],
+                [0., 0.,              0.,              0., 0.,              0.],
+                [0., 0., -1.03489604e+00, -1.67029496e+00, 0.,  1.78037877e+02]])
+sigma_1 = 1.27081569e-2
+sigma_2 = 1.90114148e-2
+sigma_3 = 79.0095745
+LIN_COV = \
+    np.array([[(sigma_1*0.02**3)/3,                  0., (sigma_1*0.02**2)/2,                  0.,                  0.,                   0.],
+              [                 0., (sigma_2*0.02**3)/3,                  0., (sigma_2*0.02**2)/2,                  0.,                   0.],
+              [(sigma_1*0.02**2)/2,                  0.,      2.54163138e-04,                   0,                  0.,                   0.],
+              [                 0., (sigma_2*0.02**2)/2,                  0.,      3.80228296e-04,                  0.,                   0.],
+              [                 0.,                  0.,                  0.,                  0., (sigma_3*0.02**3)/3,  (sigma_3*0.02**2)/2],
+              [                 0.,                  0.,                  0.,                  0., (sigma_3*0.02**2)/2,       1.58019149e+00]])
 
 OBS_COV = np.diag([5.0650402e-07, 8.3995428e-07, 1.6572967e-03])
 
@@ -134,16 +152,34 @@ class AirHockeyTable:
         v = self.boundary[:, 1] - self.boundary[:, 0]
         w = self.boundary[:, 0] - state[:2]
         denominator = self._cross_2d(v, u)
-        s = self._cross_2d(v, w) / (denominator + 1e-6)
-        r = self._cross_2d(u, w) / (denominator + 1e-6)
-        collide_idx = np.where(np.logical_and(np.logical_and(1e-6 < s, s < 1 - 1e-6), np.logical_and(1e-6 < r, r < 1 - 1e-6)))[0]
+        s_col = self._cross_2d(v, w) / (denominator + 1e-6)
+        r_col = self._cross_2d(u, w) / (denominator + 1e-6)
+        collide_idx = np.where(np.logical_and(np.logical_and(1e-6 < s_col, s_col < 1 - 1e-6), np.logical_and(1e-6 < r_col, r_col < 1 - 1e-6)))[0]
         collision = False
 
         if len(collide_idx) > 0:
             collide_rim_idx = collide_idx[0]
-            s_i = s[collide_rim_idx]
-            self._F_precollision[0][2] = self._F_precollision[1][3] = self._F_precollision[4][5] = s_i * self.dt
+            s_i = s_col[collide_rim_idx]
+            self._F_precollision[0][2] = self._F_precollision[1][3] = self._F_precollision[4][5] = (s_i * self.dt)
+            self._F_precollision[2][2] = 1 - s_i * self.dt * damping[0]
+            self._F_precollision[3][3] = 1 - s_i*self.dt * damping[1]
             self._F_postcollision[0][2] = self._F_postcollision[1][3] = self._F_postcollision[4][5] = (1 - s_i) * self.dt
+            self._F_postcollision[2][2] = 1 - (1 - s_i) * self.dt * damping[0]
+            self._F_postcollision[3][3] = 1 - (1 - s_i)*self.dt * damping[1]
+            Q_precollision = \
+                np.array([[(sigma_1*(s_i*self.dt)**3)/3,                             0., (sigma_1*(s_i * self.dt)**2)/2,                             0.,                             0.,                             0.],
+                          [                          0., (sigma_2*(s_i * self.dt)**3)/3,                             0., (sigma_2*(s_i * self.dt)**2)/2,                             0.,                             0.],
+                          [(sigma_1*(s_i*self.dt)**2)/2,                             0.,        sigma_1*(s_i * self.dt),                              0,                             0.,                             0.],
+                          [                          0., (sigma_2*(s_i * self.dt)**2)/2,                             0.,        sigma_2*(s_i * self.dt),                             0.,                             0.],
+                          [                          0.,                             0.,                             0.,                             0., (sigma_3*(s_i*self.dt)**3)/3, (sigma_3*(s_i*self.dt)**2)/2],
+                          [                          0.,                             0.,                             0.,                             0., (sigma_3*(s_i*self.dt)**2)/2,        sigma_3*(s_i*self.dt)]])
+            Q_postcollision = \
+                np.array([[(sigma_1*((1 -s_i)* self.dt)**3)/3,                                 0., (sigma_1*((1 -s_i)* self.dt)**2)/2,                                 0.,                                 0.,                                0.],
+                          [                                0., (sigma_2*((1 -s_i)* self.dt)**3)/3,                                 0., (sigma_2*((1 -s_i)* self.dt)**2)/2,                                 0.,                                0.],
+                          [(sigma_1*((1 -s_i)* self.dt)**2)/2,                                 0.,        sigma_1*((1 -s_i)* self.dt),                                  0,                                 0.,                                0.],
+                          [                                0., (sigma_2*((1 -s_i)* self.dt)**2)/2,                                 0.,        sigma_2*((1 -s_i)* self.dt),                                 0.,                                0.],
+                          [                                0.,                                 0.,                                 0.,                                 0., (sigma_3*((1 -s_i)* self.dt)**3)/3, (sigma_3*((1 -s_i)*self.dt)**2)/2],
+                          [                                0.,                                 0.,                                 0.,                                 0., (sigma_3*((1 -s_i)* self.dt)**2)/2,        sigma_3*((1 -s_i)*self.dt)]])
             state_local = self.local_rim_transform[collide_rim_idx] @ state
             # Compute the slide direction
             slide_dir = 1 if state_local[2] + state_local[5] * self.puck_radius >= 0 else -1
@@ -154,9 +190,19 @@ class AirHockeyTable:
 
             F_collision = self.local_rim_transform_inv[collide_rim_idx] @ jac_local_collision @ self.local_rim_transform[collide_rim_idx]
             F = self._F_postcollision @ F_collision @ self._F_precollision
-            Q_collision = self.local_rim_transform_inv[collide_rim_idx] @ self.col_cov @ self.local_rim_transform_inv[collide_rim_idx].T
+            Q_collision = (self._F_postcollision @ F_collision @ Q_precollision @ F_collision.T @ self._F_postcollision.T
+                           + self._F_postcollision @ self.local_rim_transform_inv[collide_rim_idx] @ self.col_cov @ self.local_rim_transform_inv[collide_rim_idx].T @ self._F_postcollision.T 
+                           + Q_postcollision)
+            #Q_collision = self.local_rim_transform_inv[collide_rim_idx] @ self.col_cov @ self.local_rim_transform_inv[collide_rim_idx].T
             collision = True
         return F, Q_collision, collision
+
+n_ukf = 2*len(LIN_COV) + 1  # number of sigma points
+w_ukf_0 = 1/1.1  # weight of the central ukf point
+w_ukf_i = (1 - w_ukf_0)/(2*len(LIN_COV))  # weights of the other ukf points
+#w_ukf = np.block([w_ukf_i*np.ones((len(LIN_COV), )), w_ukf_0,
+#                  w_ukf_i*np.ones((len(LIN_COV), ))])  # vector of weights
+a_ukf = 1/(np.sqrt(2*w_ukf_i))  # computation of a for every sigma point
 
 
 class PuckTracker:
@@ -174,7 +220,9 @@ class PuckTracker:
         self.state = None
         self.P = None
         self.gate = chi2.ppf(0.9, df = 3)
-
+        
+        self.gamma = 1
+        
     def reset(self, puck_pos):
         self.P = np.eye(6)
         self.state = np.zeros(6)
@@ -183,12 +231,34 @@ class PuckTracker:
     def predict(self, state, P):
         predicted_state = self.system.f(state)
         if self.system.has_collision:
-            Q = self.system.Q_collision
+            chol_P = np.linalg.cholesky(P)
+            z = np.zeros((6, n_ukf))
+            predicted_state = np.zeros((6, ))
+            for i in range(n_ukf):
+                if i < 6:
+                    z[:, i] = self.system.f(state + a_ukf*chol_P[:, i])
+                    predicted_state += w_ukf_i*z[:, i]
+                elif i == 6:
+                    z[:, i] = self.system.f(state)
+                    predicted_state += w_ukf_0*z[:, i]
+                elif i > 6:
+                    z[:, i] = self.system.f(state - a_ukf*chol_P[:, i-7])
+                    predicted_state += w_ukf_i*z[:, i]
+            S_z = np.zeros((6, 6))
+            for i in range(n_ukf):
+                if i ==6:
+                    S_z += w_ukf_0*np.outer((z[:, i] - predicted_state), (z[:, i] - predicted_state))
+                else:
+                    S_z += w_ukf_i*np.outer((z[:, i] - predicted_state), (z[:, i] - predicted_state))
+        else:
+            S_z = self.system.F @ P @ self.system.F.T
+        if self.system.has_collision:
+            Q = self.Q#system.Q_collision
         elif self.system.outside_boundary or self.system.score:
-            Q = self.system.Q_collision
+            Q = self.Q#system.Q_collision
         else:
             Q = self.Q
-        P = self.system.F @ P @ self.system.F.T + Q
+        P = S_z + Q
         return predicted_state, P
 
     def update(self, measurement, predicted_state, P):
@@ -200,17 +270,21 @@ class PuckTracker:
         #numerator = np.trace(self.H @ P @ self.H.T)
         #denominator = np.trace(y @ y.T - self.R)
         if self.system.has_collision:#y.T @ np.linalg.inv(S_theory) @ y > self.gate: 
-            gamma = 0.2#1#numerator/denominator
+            self.gamma = 0.2#1#numerator/denominator
         #if numerator < denominator: 
         #    gamma = 1#numerator/denominator
         else:
-            gamma = 1
-        #gamma = 0.4
+            if self.gamma < 1: 
+                self.gamma *= 1.1
+                if self.gamma > 1:
+                    self.gamma = 1
+                
+        #self.gamma = 1
         
-        S = self.H @ P @ self.H.T / gamma + self.R
-        K = P @ self.H.T @ np.linalg.inv(S) / gamma
+        S = self.H @ P @ self.H.T / self.gamma + self.R
+        K = P @ self.H.T @ np.linalg.inv(S) / self.gamma
         state = predicted_state + K @ y
-        P = (np.eye(6) - K @ self.H) @ P / gamma
+        P = (np.eye(6) - K @ self.H) @ P / self.gamma
         return state, P
 
     def step(self, measurement):
@@ -238,10 +312,7 @@ class PuckTracker:
 
 
 def puck_tracker_exp():
-    #from air_hockey_challenge.framework.air_hockey_challenge_wrapper import AirHockeyChallengeWrapper
     from air_hockey_challenge.environments.planar.hit import AirHockeyHit
-    #import matplotlib
-    #matplotlib.use('tkagg')
     import matplotlib.pyplot as plt
     from matplotlib.gridspec import GridSpec
 
@@ -263,8 +334,6 @@ def puck_tracker_exp():
             env._model.geom('puck_record').size[:2] = eig_v / 5e-4 * 0.03165
         env._data.joint('puck_record_yaw_vis').qpos = np.arctan2(eig_vector[1, 0], eig_vector[0, 0])
 
-    #env = AirHockeyChallengeWrapper(env="3dof-hit", interpolation_order=1)#, action_type="position-velocity", random_init=True,
-                                    #interpolation_order=3)a
     env = AirHockeyHit()
 
     kalman_filter = PuckTracker(env.env_info, agent_id=1)
@@ -273,8 +342,8 @@ def puck_tracker_exp():
     for epoch in range(1):
         # init_pos = np.random.uniform(kalman_filter.system.table.boundary[0, 1], kalman_filter.system.table.boundary[2, 1])
         # init_vel = np.random.randn(3)
-        init_pos = np.array([1.51, -0.3])
-        init_vel = np.array([-2, 1.7, 0.])
+        init_pos = np.array([0.6, -0.3])
+        init_vel = np.array([-3, 3, 0.5])
         state = np.concatenate([init_pos, init_vel[:2], [0.5], init_vel[2:]])
         traj = []
 
@@ -285,7 +354,7 @@ def puck_tracker_exp():
         env._data.joint("puck_x").qvel = state[2]
         env._data.joint("puck_y").qvel = state[3]
         env._data.joint("puck_yaw").qvel = state[5]
-        env._data.joint("planar_robot_1/joint_1").qpos = np.pi / 2
+        env._data.joint("planar_robot_1/joint_1").qpos = -np.pi / 2
         env._data.joint("planar_robot_1/joint_2").qpos = 0
         env._data.joint("planar_robot_1/joint_3").qpos = 0
 
@@ -293,7 +362,8 @@ def puck_tracker_exp():
 
         for i in range(200):
             obs, _, _, _ = env.step(np.array([0, 0., 0.]))
-            kalman_filter.step(obs[:3])
+            meas = obs[:3] + np.random.multivariate_normal(np.zeros((3)), OBS_COV)
+            kalman_filter.step(meas)
             state, P, _ = kalman_filter.get_prediction(predict_time)
 
             set_puck_state(env, state, P, predict_time)
@@ -327,21 +397,23 @@ def puck_tracker_exp():
 
         t = np.linspace(0, traj.shape[0] * env.env_info['dt'], traj.shape[0])
         t_predict = t + predict_time
-        ax_x_pos.plot(t_predict, traj[:, 0])
-        ax_y_pos.plot(t_predict, traj[:, 1])
-        ax_theta_pos.plot(t_predict, traj[:, 4])
+        
+        predict_step = int(predict_time/0.02)
+        ax_x_pos.plot(t_predict[0:-predict_step], traj[:, 0][0:-predict_step])
+        ax_y_pos.plot(t_predict[0:-predict_step], traj[:, 1][0:-predict_step])
+        ax_theta_pos.plot(t_predict[0:-predict_step], traj[:, 4][0:-predict_step])
 
-        ax_x_vel.plot(t_predict, traj[:, 2])
-        ax_y_vel.plot(t_predict, traj[:, 3])
-        ax_theta_vel.plot(t_predict, traj[:, 5])
+        ax_x_vel.plot(t_predict[0:-predict_step], traj[:, 2][0:-predict_step])
+        ax_y_vel.plot(t_predict[0:-predict_step], traj[:, 3][0:-predict_step])
+        ax_theta_vel.plot(t_predict[0:-predict_step], traj[:, 5][0:-predict_step])
 
-        ax_x_pos.plot(t, traj[:, 6])
-        ax_y_pos.plot(t, traj[:, 7])
-        ax_theta_pos.plot(t, traj[:, 8])
+        ax_x_pos.plot(t[predict_step:], traj[:, 6][predict_step:])
+        ax_y_pos.plot(t[predict_step:], traj[:, 7][predict_step:])
+        ax_theta_pos.plot(t[predict_step:], traj[:, 8][predict_step:])
 
-        ax_x_vel.plot(t, traj[:, 9])
-        ax_y_vel.plot(t, traj[:, 10])
-        ax_theta_vel.plot(t, traj[:, 11])
+        ax_x_vel.plot(t[predict_step:], traj[:, 9][predict_step:])
+        ax_y_vel.plot(t[predict_step:], traj[:, 10][predict_step:])
+        ax_theta_vel.plot(t[predict_step:], traj[:, 11][predict_step:])
         plt.show()
 
 
