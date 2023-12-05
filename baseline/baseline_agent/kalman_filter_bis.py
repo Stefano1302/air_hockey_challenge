@@ -224,9 +224,9 @@ class PuckTracker:
     def predict(self, state, P):
         predicted_state = self.system.f(state)
         if self.system.has_collision:
-            Q = self.Q#system.Q_collision
+            Q = self.system.Q_collision
         elif self.system.outside_boundary or self.system.score:
-            Q = self.Q#system.Q_collision
+            Q = self.system.Q_collision
         else:
             Q = self.Q
         P = self.system.F @ P @ self.system.F.T + Q

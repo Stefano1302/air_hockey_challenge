@@ -9,7 +9,7 @@ Created on Sat Aug  5 12:45:22 2023
 import numpy as np
 
 b_params = np.array([8.40683102e-01, 0, 7.71445220e-04])
-n_params = np.array([0., -0.79, 0.])
+n_params = np.array([0., -0.7, 0.])
 theta_params = np.array([-6.48073315, 6.32545305, 0.8386719])
 damping = np.array([0.2125, 0.2562])
 #LIN_COV = np.diag([8.90797655e-07, 5.49874493e-07, 2.54163138e-04, 3.80228296e-04, 7.19007035e-02, 1.58019149e+00])
@@ -197,12 +197,6 @@ class AirHockeyTable:
             collision = True
         return F, Q_collision, collision
 
-n_ukf = 2*len(LIN_COV) + 1  # number of sigma points
-w_ukf_0 = 1/1.1  # weight of the central ukf point
-w_ukf_i = (1 - w_ukf_0)/(2*len(LIN_COV))  # weights of the other ukf points
-#w_ukf = np.block([w_ukf_i*np.ones((len(LIN_COV), )), w_ukf_0,
-#                  w_ukf_i*np.ones((len(LIN_COV), ))])  # vector of weights
-a_ukf = 1/(np.sqrt(2*w_ukf_i))  # computation of a for every sigma point
 
 
 class PuckTracker:
@@ -219,7 +213,10 @@ class PuckTracker:
 
         self.state = None
         self.P = None
-        self.gate = chi2.ppf(0.9, df = 3)
+        self.n_ukf = 2*len(LIN_COV) + 1  # number of sigma points
+        self.w_ukf_0 = 1/1.1  # weight of the central ukf point
+        self.w_ukf = (1 - self.w_ukf_0)/(2*len(LIN_COV))  # weights of the other ukf points
+        self.a_ukf = 1/(np.sqrt(2*self.w_ukf))  # computation of a for every sigma point
         
         self.gamma = 1
         
@@ -232,30 +229,30 @@ class PuckTracker:
         predicted_state = self.system.f(state)
         if self.system.has_collision:
             chol_P = np.linalg.cholesky(P)
-            z = np.zeros((6, n_ukf))
+            z = np.zeros((6, self.n_ukf))
             predicted_state = np.zeros((6, ))
-            for i in range(n_ukf):
+            for i in range(self.n_ukf):
                 if i < 6:
-                    z[:, i] = self.system.f(state + a_ukf*chol_P[:, i])
-                    predicted_state += w_ukf_i*z[:, i]
+                    z[:, i] = self.system.f(state + self.a_ukf*chol_P[:, i])
+                    predicted_state += self.w_ukf*z[:, i]
                 elif i == 6:
                     z[:, i] = self.system.f(state)
-                    predicted_state += w_ukf_0*z[:, i]
+                    predicted_state += self.w_ukf_0*z[:, i]
                 elif i > 6:
-                    z[:, i] = self.system.f(state - a_ukf*chol_P[:, i-7])
-                    predicted_state += w_ukf_i*z[:, i]
+                    z[:, i] = self.system.f(state - self.a_ukf*chol_P[:, i-7])
+                    predicted_state += self.w_ukf*z[:, i]
             S_z = np.zeros((6, 6))
-            for i in range(n_ukf):
+            for i in range(self.n_ukf):
                 if i ==6:
-                    S_z += w_ukf_0*np.outer((z[:, i] - predicted_state), (z[:, i] - predicted_state))
+                    S_z += self.w_ukf_0*np.outer((z[:, i] - predicted_state), (z[:, i] - predicted_state))
                 else:
-                    S_z += w_ukf_i*np.outer((z[:, i] - predicted_state), (z[:, i] - predicted_state))
+                    S_z += self.w_ukf*np.outer((z[:, i] - predicted_state), (z[:, i] - predicted_state))
         else:
             S_z = self.system.F @ P @ self.system.F.T
         if self.system.has_collision:
-            Q = self.Q#system.Q_collision
+            Q = self.system.Q_collision
         elif self.system.outside_boundary or self.system.score:
-            Q = self.Q#system.Q_collision
+            Q = self.system.Q_collision
         else:
             Q = self.Q
         P = S_z + Q
@@ -266,20 +263,14 @@ class PuckTracker:
         theta_innovation = (measurement[2] - predicted_state[4] + np.pi) % (np.pi * 2) - np.pi
         y = np.concatenate([xy_innovation, [theta_innovation]])
         
-        #S_theory = self.H @ P @ self.H.T + self.R
-        #numerator = np.trace(self.H @ P @ self.H.T)
-        #denominator = np.trace(y @ y.T - self.R)
-        if self.system.has_collision:#y.T @ np.linalg.inv(S_theory) @ y > self.gate: 
-            self.gamma = 0.2#1#numerator/denominator
-        #if numerator < denominator: 
-        #    gamma = 1#numerator/denominator
+
+        if self.system.has_collision: 
+            self.gamma = 1
         else:
             if self.gamma < 1: 
                 self.gamma *= 1.1
-                if self.gamma > 1:
-                    self.gamma = 1
-                
-        #self.gamma = 1
+            else:
+                self.gamma = 1
         
         S = self.H @ P @ self.H.T / self.gamma + self.R
         K = P @ self.H.T @ np.linalg.inv(S) / self.gamma
@@ -343,7 +334,7 @@ def puck_tracker_exp():
         # init_pos = np.random.uniform(kalman_filter.system.table.boundary[0, 1], kalman_filter.system.table.boundary[2, 1])
         # init_vel = np.random.randn(3)
         init_pos = np.array([0.6, -0.3])
-        init_vel = np.array([-3, 3, 0.5])
+        init_vel = np.array([-3, 1.7, 0.5])
         state = np.concatenate([init_pos, init_vel[:2], [0.5], init_vel[2:]])
         traj = []
 

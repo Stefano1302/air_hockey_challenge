@@ -1,7 +1,7 @@
 import numpy as np
 
 b_params = np.array([8.40683102e-01, 0, 7.71445220e-04])
-n_params = np.array([0., -0.79, 0.])
+n_params = np.array([0., -0.7, 0.])
 theta_params = np.array([-6.48073315, 6.32545305, 0.8386719])
 damping = np.array([0.2125, 0.2562])
 LIN_COV = np.diag([8.90797655e-07, 5.49874493e-07, 2.54163138e-04, 3.80228296e-04, 7.19007035e-02, 1.58019149e+00])
@@ -174,6 +174,7 @@ class PuckTracker:
         self.state = None
         self.P = None
         self.gate = chi2.ppf(0.9, df = 3)
+        self.gamma = 1
 
     def reset(self, puck_pos):
         self.P = np.eye(6)
@@ -200,17 +201,20 @@ class PuckTracker:
         #numerator = np.trace(self.H @ P @ self.H.T)
         #denominator = np.trace(y @ y.T - self.R)
         if self.system.has_collision:#y.T @ np.linalg.inv(S_theory) @ y > self.gate: 
-            gamma = 0.2#1#numerator/denominator
+            self.gamma = 0.2#numerator/denominator
         #if numerator < denominator: 
         #    gamma = 1#numerator/denominator
         else:
-            gamma = 1
+            if self.gamma < 1:
+                self.gamma *= 1.2
+            else:
+                self.gamma = 1
         #gamma = 0.4
         
-        S = self.H @ P @ self.H.T / gamma + self.R
-        K = P @ self.H.T @ np.linalg.inv(S) / gamma
+        S = self.H @ P @ self.H.T / self.gamma + self.R
+        K = P @ self.H.T @ np.linalg.inv(S) / self.gamma
         state = predicted_state + K @ y
-        P = (np.eye(6) - K @ self.H) @ P / gamma
+        P = (np.eye(6) - K @ self.H) @ P / self.gamma
         return state, P
 
     def step(self, measurement):
@@ -273,8 +277,8 @@ def puck_tracker_exp():
     for epoch in range(1):
         # init_pos = np.random.uniform(kalman_filter.system.table.boundary[0, 1], kalman_filter.system.table.boundary[2, 1])
         # init_vel = np.random.randn(3)
-        init_pos = np.array([1.51, -0.3])
-        init_vel = np.array([-2, 1.7, 0.])
+        init_pos = np.array([0.6, -0.3])
+        init_vel = np.array([-3, 1.7, 0.5])
         state = np.concatenate([init_pos, init_vel[:2], [0.5], init_vel[2:]])
         traj = []
 
@@ -293,7 +297,9 @@ def puck_tracker_exp():
 
         for i in range(200):
             obs, _, _, _ = env.step(np.array([0, 0., 0.]))
-            kalman_filter.step(obs[:3])
+            meas = obs[:3] + np.random.multivariate_normal(np.zeros((3)), OBS_COV)
+            kalman_filter.step(meas)
+            
             state, P, _ = kalman_filter.get_prediction(predict_time)
 
             set_puck_state(env, state, P, predict_time)
